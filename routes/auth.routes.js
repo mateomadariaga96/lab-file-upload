@@ -8,9 +8,11 @@ const bcryptjs = require('bcryptjs');
 const saltRounds = 10;
 const User = require('../models/User.model');
 const mongoose = require('mongoose');
+const multer = require('multer')
+const uploads = multer({dest: './public/uploads'})
 
 const routeGuard = require('../configs/route-guard.config');
-const Picture = require('../models/Picture.model');
+
 
 
 
@@ -19,48 +21,44 @@ const Picture = require('../models/Picture.model');
 ////////////////////////////////////////////////////////////////////////
 
 // .get() route ==> to display the signup form to users
-router.get('/signup', (req, res) => res.render('auth/signup'));
+router.get('/signup', (req, res) => {
+  console.log("signup");
+  res.render('auth/signup')});
+
 
 // .post() route ==> to process form data
-router.post('/signup', (req, res, next) => {
-  const {
-    username,
-    email,
-    password
-  } = req.body;
+router.post('/signup', uploads.single('photo'), (req, res, next) => {
+  const userInfo = req.body
+  userInfo.photo = req.file ? `/uploads/${req.file.filename}` : undefined
+  const user = new User(userInfo)
+  console.log(user);
 
-  if (!username || !email || !password) {
-    res.render('auth/signup', {
-      errorMessage: 'All fields are mandatory. Please provide your username, email and password.'
-    });
-    return;
-  }
+  // if (!user.username || !user.email || !user.password) {
+  //   res.render('auth/signup', {
+  //     errorMessage: 'All fields are mandatory. Please provide your username, email and password.'
+  //   });
+  //   return;
+  // }
 
-  // make sure passwords are strong:
-  const regex = /(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{6,}/;
-  if (!regex.test(password)) {
-    res
-      .status(500)
-      .render('auth/signup', {
-        errorMessage: 'Password needs to have at least 6 chars and must contain at least one number, one lowercase and one uppercase letter.'
-      });
-    return;
-  }
+  // // make sure passwords are strong:
+  // const regex = /(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{6,}/;
+  // if (!regex.test(user.password)) {
+  //   res
+  //     .status(500)
+  //     .render('auth/signup', {
+  //       errorMessage: 'Password needs to have at least 6 chars and must contain at least one number, one lowercase and one uppercase letter.'
+  //     });
+  //   return;
+  // }
 
   bcryptjs
     .genSalt(saltRounds)
-    .then(salt => bcryptjs.hash(password, salt))
+    .then(salt => bcryptjs.hash(user.password, salt))
     .then(hashedPassword => {
-      return User.create({
-        // username: username
-        username,
-        email,
-        // passwordHash => this is the key from the User model
-        //     ^
-        //     |            |--> this is placeholder (how we named returning value from the previous method (.hash()))
-        passwordHash: hashedPassword
-      });
+      user.password = hashedPassword
+      user.save();
     })
+
     .then(userFromDB => {
       console.log('Newly created user is: ', userFromDB);
       res.redirect('/userProfile');
@@ -80,14 +78,11 @@ router.post('/signup', (req, res, next) => {
     });
 
   // Route to upload from project base path
-  const upload = multer({
-    dest: './public/uploads/'
-  });
 
-  router.post('/upload', upload.single('photo'), (req, res, next) => {
+  router.post('/signup', uploads.single('photo'), (req, res, next) => {
     const picture = new Picture({
       name: req.body.name,
-      path: `/uploads/${req.file.filename}`,
+      path: `/public/uploads/${req.file.filename}`,
       originalName: req.file.originalname
     });
 
@@ -132,7 +127,7 @@ router.post('/login', (req, res, next) => {
           errorMessage: 'Email is not registered. Try with other email.'
         });
         return;
-      } else if (bcryptjs.compareSync(password, user.passwordHash)) {
+      } else if (bcryptjs.compareSync(password, user.password)) {
         req.session.currentUser = user;
         res.redirect('/userProfile');
       } else {
